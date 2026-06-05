@@ -1,0 +1,13 @@
+dados/
+__pycache__/
+*.pyc
+.venv/
+venv/
+.ipynb_checkpoints/
+modelos/*.pkl
+modelos/*.pt
+modelos/*.h5
+.kaggle/
+access_token
+kaggle.json
+.DS_Store
