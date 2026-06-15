@@ -1,8 +1,9 @@
-pandas
-numpy
-scikit-learn
-matplotlib
-seaborn
 torch
 torchvision
+scikit-learn
+pandas
+numpy
 pillow
+opencv-python
+mediapipe
+kaggle

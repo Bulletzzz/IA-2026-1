@@ -1,33 +1,29 @@
 import torch
 from torch import nn
+from torchvision import models
 from sklearn.metrics import accuracy_score
 
-from preparacao import carregar, SEMENTE
+from preparacao_pixels import carregar
 
-EPOCAS = 150
-TAXA = 0.001
+SEMENTE = 42
+EPOCAS = 20
+TAXA = 0.0001
+TAMANHO = 224
 
 
-class RedePostura(nn.Module):
-    def __init__(self, classes):
-        super().__init__()
-        self.rede = nn.Sequential(
-            nn.Linear(99, 256), nn.BatchNorm1d(256), nn.ReLU(), nn.Dropout(0.3),
-            nn.Linear(256, 128), nn.BatchNorm1d(128), nn.ReLU(), nn.Dropout(0.3),
-            nn.Linear(128, classes),
-        )
-
-    def forward(self, x):
-        return self.rede(x)
+def criar_resnet(num_classes):
+    rede = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
+    rede.fc = nn.Linear(512, num_classes)
+    return rede
 
 
 def avaliar(rede, carregador, dispositivo):
     rede.eval()
     reais, previstos = [], []
     with torch.no_grad():
-        for X, y in carregador:
-            saida = rede(X.to(dispositivo)).argmax(dim=1).cpu()
-            reais += y.tolist()
+        for imagens, rotulos in carregador:
+            saida = rede(imagens.to(dispositivo)).argmax(dim=1).cpu()
+            reais += rotulos.tolist()
             previstos += saida.tolist()
     return accuracy_score(reais, previstos)
 
@@ -36,24 +32,25 @@ def treinar():
     torch.manual_seed(SEMENTE)
     dispositivo = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Dispositivo: {dispositivo}")
-    treino, teste, classes = carregar()
+    treino, teste, classes = carregar(tamanho=TAMANHO)
+    print(f"Classes: {list(classes)}\n")
 
-    rede = RedePostura(len(classes)).to(dispositivo)
+    rede = criar_resnet(len(classes)).to(dispositivo)
     criterio = nn.CrossEntropyLoss()
     otimizador = torch.optim.Adam(rede.parameters(), lr=TAXA, weight_decay=1e-4)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(otimizador, mode="max", factor=0.5, patience=10)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(otimizador, mode="max", factor=0.5, patience=3)
 
     melhor_acuracia = 0.0
-    paciencia_maxima = 20
+    paciencia_maxima = 6
     epocas_sem_melhorar = 0
 
     for epoca in range(1, EPOCAS + 1):
         rede.train()
         perda_total = 0.0
-        for X, y in treino:
-            X, y = X.to(dispositivo), y.to(dispositivo)
+        for imagens, rotulos in treino:
+            imagens, rotulos = imagens.to(dispositivo), rotulos.to(dispositivo)
             otimizador.zero_grad()
-            perda = criterio(rede(X), y)
+            perda = criterio(rede(imagens), rotulos)
             perda.backward()
             otimizador.step()
             perda_total += perda.item()
@@ -63,15 +60,12 @@ def treinar():
         lr_atual = otimizador.param_groups[0]["lr"]
         scheduler.step(acuracia_atual)
 
-        print(f"epoca {epoca:3d}  perda {perda_media:.4f}  acurácia {acuracia_atual:.4f}  lr {lr_atual:.6f}", end="")
+        print(f"epoca {epoca:2d}  perda {perda_media:.4f}  acurácia {acuracia_atual:.4f}  lr {lr_atual:.6f}", end="")
 
         if acuracia_atual > melhor_acuracia:
             melhor_acuracia = acuracia_atual
             epocas_sem_melhorar = 0
-            torch.save({
-                "estado_da_rede": rede.state_dict(),
-                "classes": classes,
-            }, "modelo_academia.pth")
+            torch.save({"tipo": "resnet", "estado_da_rede": rede.state_dict(), "classes": classes, "tamanho_imagem": TAMANHO}, "modelo_resnet.pth")
             print("  -> Melhor modelo salvo!")
         else:
             epocas_sem_melhorar += 1
@@ -81,7 +75,6 @@ def treinar():
                 break
 
     print(f"\nMelhor acurácia: {melhor_acuracia:.4f}")
-    return rede, classes
 
 
 if __name__ == "__main__":

@@ -7,6 +7,9 @@ venv/
 modelos/*.pkl
 modelos/*.pt
 modelos/*.h5
+*.pth
+dataset_teste/
+video_inferencia/
 .kaggle/
 access_token
 kaggle.json
